@@ -9,37 +9,40 @@ export async function POST(req: NextRequest) {
         const response = await fetch('https://api.together.xyz/v1/chat/completions', {
             method: 'POST',
             headers: {
-                'Authorization': `Bearer ${process.env.TOGETHER_API_KEY}`,
                 'Content-Type': 'application/json',
+                'Authorization': `Bearer ${process.env.TOGETHER_API_KEY}`,
             },
             body: JSON.stringify({
-                model: 'meta-llama/Llama-2-7b-chat-hf',
+                model: 'meta-llama/Llama-3-8b-chat-hf', // ✅ use a valid Together AI model
                 messages: [
                     {
+                        role: 'system',
+                        content: 'You are a career coach that gives suggestions based on user input.',
+                    },
+                    {
                         role: 'user',
-                        content: prompt
-                    }
+                        content: resumeText,
+                    },
                 ],
-                max_tokens: 400,
-                temperature: 0.7,
             }),
         })
 
-        if (!response.ok) {
-            throw new Error(`Together AI error: ${response.status}`)
+        const data = await response.json()
+
+        if (!response.ok || !data.choices || !data.choices[0]?.message?.content) {
+            console.error('Together API error:', data)
+            return NextResponse.json({ error: 'Failed to generate suggestion' }, { status: 500 })
         }
 
-        const data = await response.json()
-        return NextResponse.json({ 
-            suggestion: data.choices[0].message.content 
-        })
+        return NextResponse.json({ suggestion: data.choices[0].message.content })
+
 
     } catch (error: any) {
         console.error('Together AI error:', error)
-        
+
         // Fallback to enhanced local processing
         const localSuggestion = generateEnhancedLocalSuggestions(resumeText)
-        return NextResponse.json({ 
+        return NextResponse.json({
             suggestion: localSuggestion,
             source: "local_processing"
         })
@@ -48,7 +51,7 @@ export async function POST(req: NextRequest) {
 
 function generateEnhancedLocalSuggestions(resumeText: string): string {
     const text = resumeText.toLowerCase()
-    
+
     // Enhanced keyword detection
     const techSkills = {
         frontend: ['react', 'angular', 'vue', 'javascript', 'html', 'css', 'frontend'],
@@ -60,16 +63,16 @@ function generateEnhancedLocalSuggestions(resumeText: string): string {
         marketing: ['marketing', 'seo', 'social media', 'content', 'analytics'],
         management: ['project', 'scrum', 'agile', 'leadership', 'management']
     }
-    
+
     type CareerKey = keyof typeof careerMap;
-    
+
     const detectedSkills: CareerKey[] = []
     for (const [category, keywords] of Object.entries(techSkills)) {
         if (keywords.some(keyword => text.includes(keyword))) {
             detectedSkills.push(category as CareerKey)
         }
     }
-    
+
     const careerMap = {
         frontend: {
             title: "Frontend Developer",
@@ -112,37 +115,37 @@ function generateEnhancedLocalSuggestions(resumeText: string): string {
             courses: "Coursera PM Certificate, Scrum.org, PMI resources"
         }
     }
-    
+
     let suggestions = "🎯 **Personalized Career Recommendations**\n\n"
-    
+
     // Get top 3 suggestions based on detected skills
     const recommendedCareers = detectedSkills.slice(0, 3).map(skill => careerMap[skill])
-    
+
     // Add default careers if less than 3 detected
     const defaultCareers = [
         careerMap.frontend,
         careerMap.data,
         careerMap.marketing
     ]
-    
+
     const finalCareers = [...recommendedCareers]
     defaultCareers.forEach(career => {
         if (finalCareers.length < 3 && !finalCareers.includes(career)) {
             finalCareers.push(career)
         }
     })
-    
+
     finalCareers.slice(0, 3).forEach((career, index) => {
         suggestions += `**${index + 1}. ${career.title}**\n`
         suggestions += `   📋 Required Skills: ${career.skills}\n`
         suggestions += `   🎓 Free Learning Platforms: ${career.courses}\n\n`
     })
-    
+
     suggestions += "💡 **Pro Tips:**\n"
     suggestions += "• Build a portfolio/GitHub profile\n"
     suggestions += "• Join relevant communities (Discord, Reddit)\n"
     suggestions += "• Practice with real projects\n"
     suggestions += "• Network on LinkedIn\n"
-    
+
     return suggestions
 }
